@@ -49,7 +49,8 @@ impl event::EventHandler<ggez::GameError> for MainState {
             2.0,
             Color::WHITE,
         )?;
-        canvas.draw(&circle, Vec2::new(self.pos_x, 380.0));
+        canvas.draw(&circle,
+                    Vec2::new(self.factorio.player.position.0, self.factorio.player.position.1));
 
         canvas.finish(ctx)?;
         Ok(())

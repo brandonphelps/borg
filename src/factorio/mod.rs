@@ -30,7 +30,7 @@ impl Direction {
     //     east is 1.0, 0.0
     //     north east is then, cos(45 degrees), sin(45 degreess)
     fn angle(&self) -> (f32, f32) {
-        match self {
+        let angle = match self {
             Direction::North => (0.0, 1.0),
             Direction::NorthEast => ((PI / 4.0).cos() as f32, (PI / 4.0).sin() as f32),
             Direction::East => (1.0, 0.0),
@@ -39,7 +39,11 @@ impl Direction {
             Direction::SouthWest => ((5.0 * PI / 4.0).cos() as f32, (5.0 * PI / 4.0).sin() as f32),
             Direction::West => (-1.0, 0.0),
             Direction::NorthWest => ((3.0 * PI / 4.0).cos() as f32, (3.0 * PI / 4.0).sin() as f32),
-        }
+        };
+        // this is due to the coords for drawing is flipped
+        // maybe, the coords flippage for drawing should be
+        // done by some sort of camera object or render area. 
+        (angle.0, -1.0 * angle.1)
     }
 }
 
@@ -52,10 +56,10 @@ impl Direction {
 // f(x) =
 //
 
-struct Player {
+pub struct Player {
     // todo: also keep track of a "chunk" region
     // so that positions don't get super large. 
-    position: (f32, f32),
+    pub position: (f32, f32),
     direction: Direction,
 }
 
@@ -69,7 +73,7 @@ struct Tile {
 }
 
 pub struct FactorioState {
-    player: Player,
+    pub player: Player,
     tiles: Vec<Tile>,
 }
 
@@ -110,14 +114,12 @@ impl FactorioState {
         };
 
         if let Some(dir) = direction {
-            println!("input: {:?}, dir: {:?}", input, dir);
             self.player.direction = dir;
             let dir = self.player.direction.angle();
             self.player.position = (
                 self.player.position.0 + 1.0 * dir.0,
                 self.player.position.1 + 1.0 * dir.1,
             );
-            println!("{:?}", self.player.position);
         }
     }
 }

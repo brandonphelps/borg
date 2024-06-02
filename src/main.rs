@@ -1,9 +1,9 @@
 use factorio::{FactorioState, Input};
 use ggez::event;
+use ggez::glam::*;
 use ggez::graphics::{self, Color};
 use ggez::input::keyboard::KeyInput;
 use ggez::{Context, GameResult};
-use ggez::glam::*;
 
 use std::time::Instant;
 
@@ -38,10 +38,8 @@ impl event::EventHandler<ggez::GameError> for MainState {
     }
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult {
-        let mut canvas = graphics::Canvas::from_frame(
-            ctx,
-            graphics::Color::from([0.1, 0.2, 0.3, 1.0]),
-        );
+        let mut canvas =
+            graphics::Canvas::from_frame(ctx, graphics::Color::from([0.1, 0.2, 0.3, 1.0]));
 
         let circle = graphics::Mesh::new_circle(
             ctx,
@@ -66,7 +64,18 @@ impl event::EventHandler<ggez::GameError> for MainState {
         println!("Key down: {:?}", input);
 
         match input.keycode.unwrap() {
-            
+            ggez::winit::event::VirtualKeyCode::Up => {
+                self.input.up_pressed = true;
+            }
+            ggez::winit::event::VirtualKeyCode::Down => {
+                self.input.down_pressed = true;
+            }
+            ggez::winit::event::VirtualKeyCode::Left => {
+                self.input.left_pressed = true;
+            }
+            ggez::winit::event::VirtualKeyCode::Right => {
+                self.input.right_pressed = true;
+            }
             other_input => {
                 println!("unhandled key: {:?}", other_input);
             }
@@ -75,8 +84,29 @@ impl event::EventHandler<ggez::GameError> for MainState {
         Ok(())
     }
 
-    fn key_up_event(&mut self, _ctx: &mut Context, input: ggez::input::keyboard::KeyInput) -> Result<(), ggez::GameError> {
+    fn key_up_event(
+        &mut self,
+        _ctx: &mut Context,
+        input: ggez::input::keyboard::KeyInput,
+    ) -> Result<(), ggez::GameError> {
         println!("Key up: {:?}", input);
+        match input.keycode.unwrap() {
+            ggez::winit::event::VirtualKeyCode::Up => {
+                self.input.up_pressed = false;
+            }
+            ggez::winit::event::VirtualKeyCode::Down => {
+                self.input.down_pressed = false;
+            }
+            ggez::winit::event::VirtualKeyCode::Left => {
+                self.input.left_pressed = false;
+            }
+            ggez::winit::event::VirtualKeyCode::Right => {
+                self.input.right_pressed = false;
+            }
+            _ => {
+                println!("unhandled input");
+            }
+        }
         Ok(())
     }
 }

@@ -42,23 +42,14 @@ impl Direction {
         };
         // this is due to the coords for drawing is flipped
         // maybe, the coords flippage for drawing should be
-        // done by some sort of camera object or render area. 
+        // done by some sort of camera object or render area.
         (angle.0, -1.0 * angle.1)
     }
 }
 
-//    /|
-// z / | y
-//  /  |
-// -----
-//   x
-
-// f(x) =
-//
-
 pub struct Player {
     // todo: also keep track of a "chunk" region
-    // so that positions don't get super large. 
+    // so that positions don't get super large.
     pub position: (f32, f32),
     direction: Direction,
 }
@@ -108,7 +99,7 @@ impl FactorioState {
         } else if input.left_pressed {
             Some(Direction::West)
         } else if input.right_pressed {
-            Some(Direction::East) 
+            Some(Direction::East)
         } else {
             None
         };

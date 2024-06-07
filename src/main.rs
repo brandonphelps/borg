@@ -2,18 +2,21 @@ use factorio::{FactorioState, Input};
 use ggez::event;
 use ggez::glam::*;
 use ggez::graphics::{self, Color};
-use ggez::input::keyboard::KeyInput;
 use ggez::{Context, GameResult};
+use i2c::ProtocolState;
 
+use std::time::Duration;
 use std::time::Instant;
 
 mod factorio;
+mod i2c;
 
 struct MainState {
     pos_x: f32,
     previous: Instant,
     factorio: FactorioState,
     input: Input,
+    i2c_protocol: ProtocolState,
 }
 
 impl MainState {
@@ -23,6 +26,7 @@ impl MainState {
             previous: Instant::now(),
             factorio: FactorioState::new(),
             input: Input::default(),
+            i2c_protocol: ProtocolState::default(),
         };
         Ok(s)
     }
@@ -34,6 +38,8 @@ impl event::EventHandler<ggez::GameError> for MainState {
         self.previous = Instant::now();
 
         self.factorio.update(self.input.clone());
+        self.i2c_protocol
+            .update(Duration::from_millis(1), self.input.clone());
         Ok(())
     }
 
@@ -49,9 +55,14 @@ impl event::EventHandler<ggez::GameError> for MainState {
             2.0,
             Color::WHITE,
         )?;
-        canvas.draw(&circle,
-                    Vec2::new(self.factorio.player.position.0, self.factorio.player.position.1));
-
+        canvas.draw(
+            &circle,
+            Vec2::new(
+                self.factorio.player.position.0,
+                self.factorio.player.position.1,
+            ),
+        );
+        self.i2c_protocol.draw(ctx, &mut canvas)?;
         canvas.finish(ctx)?;
         Ok(())
     }

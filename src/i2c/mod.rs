@@ -1,6 +1,5 @@
 use std::{
-    collections::VecDeque,
-    time::{Duration, Instant},
+    collections::VecDeque, ops::Not, time::{Duration, Instant}
 };
 
 use ggez::{
@@ -91,13 +90,44 @@ struct Frame {}
 pub struct Message {
     // start condition
     // address frame
+    address: u16,
     // read/write bit
+    read_bit: bool,
+    data_frame1: u8,
     // ack/nack bit
     // data frame 1
+    data_frame2: u8,
     // ack/nack bit
     // data frame 2
     // ack/nack bit
     // stop condition.
+}
+
+pub struct BitArray<'a> {
+    buffer: &'a [u8],
+    cursor: u8,
+}
+
+impl<'a> BitArray<'a> {
+    fn new(value: &'a [u8]) -> Self {
+        Self {
+            buffer: value,
+            cursor: 0,
+        }
+    }
+
+    fn get_current_bit(&self) -> bool {
+        println!("Buffer: {:b} {:b}", self.buffer[0], self.buffer[0] & self.cursor);
+        println!("cursor: {}", self.cursor);
+        println!("B: {:b}", self.cursor);
+        let bit_cursor = self.cursor % 8;
+        let byte_cursor = self.cursor / 8;
+        (self.buffer[byte_cursor as usize] & (0x1 << bit_cursor)) == 1 << bit_cursor
+    }
+
+    fn inc_cursor(&mut self) {
+        self.cursor += 1;
+    }
 }
 
 pub struct Master {
@@ -112,6 +142,8 @@ pub struct Master {
 
     // serial clock
     scl: Line,
+
+    message_buffer: [u8; 8],
 }
 
 impl Master {
@@ -121,6 +153,7 @@ impl Master {
             clock_rate,
             sda: Line::new(0.0, 12.0),
             scl: Line::new(0.0, 12.0),
+            message_buffer: [0; 8],
         }
     }
 
@@ -131,6 +164,10 @@ impl Master {
             self.time_past -= self.clock_rate as u128;
             self.scl.flip();
         }
+    }
+
+    fn enque_message(&mut self, message: Message) {
+        
     }
 }
 
@@ -151,12 +188,12 @@ pub struct Scope {
 }
 
 impl Scope {
-    pub fn new(sample_rate: Duration) -> Self {
+    pub fn new(sample_rate: Duration, buffer_size: usize) -> Self {
         Self {
             line_values: VecDeque::<f32>::default(),
             sample_timer: Timer::new(sample_rate.as_millis()),
             last_value: 0.0,
-            buffer_size: 100,
+            buffer_size,
         }
     }
 
@@ -184,8 +221,8 @@ pub struct ProtocolState {
 impl ProtocolState {
     pub fn default() -> Self {
         Self {
-            master: Master::new(20),
-            scope_scl: Scope::new(Duration::from_millis(10)),
+            master: Master::new(5),
+            scope_scl: Scope::new(Duration::from_millis(5), 30),
         }
     }
 
@@ -274,5 +311,36 @@ mod test {
 
         m.update(Duration::from_millis(1));
         assert_eq!(m.scl.voltage_level, 12.0);
+    }
+
+    #[test]
+    fn test_bit_array() {
+        let mut bit_array = BitArray::new(&[0xAF, 0xDF]);
+        assert_eq!(bit_array.get_current_bit(), true);
+        bit_array.inc_cursor();
+        assert_eq!(bit_array.get_current_bit(), true);
+        bit_array.inc_cursor();
+        assert_eq!(bit_array.get_current_bit(), true);
+        bit_array.inc_cursor();
+        assert_eq!(bit_array.get_current_bit(), true);
+        bit_array.inc_cursor();
+        assert_eq!(bit_array.get_current_bit(), false);
+        bit_array.inc_cursor();
+        assert_eq!(bit_array.get_current_bit(), true);
+        bit_array.inc_cursor();
+        assert_eq!(bit_array.get_current_bit(), false);
+        bit_array.inc_cursor();
+        assert_eq!(bit_array.get_current_bit(), true);
+
+
+
+        bit_array.inc_cursor();
+        assert_eq!(bit_array.get_current_bit(), true);
+        bit_array.inc_cursor();
+        assert_eq!(bit_array.get_current_bit(), true);
+        bit_array.inc_cursor();
+        assert_eq!(bit_array.get_current_bit(), true);
+        bit_array.inc_cursor();
+        assert_eq!(bit_array.get_current_bit(), true);
     }
 }

@@ -1,5 +1,6 @@
 use std::{
-    collections::VecDeque, ops::Not, time::{Duration, Instant}
+    collections::VecDeque,
+    time::{Duration, Instant},
 };
 
 use ggez::{
@@ -76,6 +77,10 @@ impl Line {
         self.voltage_level = volts;
     }
 
+    pub fn is_high(&mut self) -> bool {
+        self.voltage_level == self.high
+    }
+
     pub fn flip(&mut self) {
         if self.voltage_level == self.high {
             self.voltage_level = self.low;
@@ -103,30 +108,40 @@ pub struct Message {
     // stop condition.
 }
 
-pub struct BitArray<'a> {
-    buffer: &'a [u8],
+impl Message {
+    fn to_bits(&self) -> Vec<u8> {
+        let a = self.address.to_be_bytes();
+        vec![a[0], a[1]]
+    }
+}
+
+pub struct BitArray {
+    buffer: Vec<u8>,
     cursor: u8,
 }
 
-impl<'a> BitArray<'a> {
-    fn new(value: &'a [u8]) -> Self {
+impl BitArray {
+    fn new(value: &[u8]) -> Self {
         Self {
-            buffer: value,
+            buffer: value.to_vec(),
             cursor: 0,
         }
     }
 
     fn get_current_bit(&self) -> bool {
-        println!("Buffer: {:b} {:b}", self.buffer[0], self.buffer[0] & self.cursor);
-        println!("cursor: {}", self.cursor);
-        println!("B: {:b}", self.cursor);
         let bit_cursor = self.cursor % 8;
         let byte_cursor = self.cursor / 8;
         (self.buffer[byte_cursor as usize] & (0x1 << bit_cursor)) == 1 << bit_cursor
     }
 
-    fn inc_cursor(&mut self) {
+    // returns true if cursor is done.
+    fn inc_cursor(&mut self) -> bool {
         self.cursor += 1;
+        (self.cursor / 8) as usize >= self.buffer.len()
+    }
+
+    fn reset_cursor(&mut self) {
+        self.cursor = 0;
     }
 }
 
@@ -143,17 +158,25 @@ pub struct Master {
     // serial clock
     scl: Line,
 
-    message_buffer: [u8; 8],
+    data: BitArray,
 }
 
 impl Master {
     fn new(clock_rate: u32) -> Self {
+        let msg = Message {
+            address: 0b0101101,
+            read_bit: false,
+            data_frame1: 0x23,
+            data_frame2: 0x30,
+        };
+
+        let data_bits = msg.to_bits();
         Self {
             time_past: 0,
             clock_rate,
             sda: Line::new(0.0, 12.0),
             scl: Line::new(0.0, 12.0),
-            message_buffer: [0; 8],
+            data: BitArray::new(&data_bits),
         }
     }
 
@@ -163,11 +186,24 @@ impl Master {
         if self.time_past >= self.clock_rate as u128 {
             self.time_past -= self.clock_rate as u128;
             self.scl.flip();
+            if !self.scl.is_high() {
+                if self.data.inc_cursor() {
+                    self.data.reset_cursor();
+                }
+            }
         }
-    }
-
-    fn enque_message(&mut self, message: Message) {
-        
+        // the note is due to how the drawing of the graph works currently.
+        if self.scl.is_high() {
+            if self.data.get_current_bit() {
+                if !self.sda.is_high() {
+                    self.sda.flip()
+                }
+            } else {
+                if self.sda.is_high() {
+                    self.sda.flip()
+                }
+            }
+        }
     }
 }
 
@@ -216,27 +252,29 @@ impl Scope {
 pub struct ProtocolState {
     master: Master,
     scope_scl: Scope,
+    scope_sda: Scope,
 }
 
 impl ProtocolState {
     pub fn default() -> Self {
         Self {
-            master: Master::new(5),
-            scope_scl: Scope::new(Duration::from_millis(5), 30),
+            master: Master::new(10),
+            scope_scl: Scope::new(Duration::from_millis(5), 200),
+            scope_sda: Scope::new(Duration::from_millis(5), 200),
         }
     }
 
     pub fn update(&mut self, dt: Duration, input: Input) {
         self.master.update(dt);
         self.scope_scl.update(dt, self.master.scl.voltage_level);
+        self.scope_sda.update(dt, self.master.sda.voltage_level);
 
         if input.up_pressed {
             self.scope_scl.sample_timer.trigger_rate += 1;
             println!("Trigger rate: {}", self.scope_scl.sample_timer.trigger_rate);
         } else if input.down_pressed {
             if self.scope_scl.sample_timer.trigger_rate - 1 == 0 {
-                
-            } else { 
+            } else {
                 self.scope_scl.sample_timer.trigger_rate -= 1;
             }
             println!("Trigger rate: {}", self.scope_scl.sample_timer.trigger_rate);
@@ -245,7 +283,7 @@ impl ProtocolState {
             if self.scope_scl.buffer_size - 1 != 0 {
                 self.scope_scl.buffer_size -= 1;
                 println!("buffer size: {}", self.scope_scl.buffer_size);
-            } 
+            }
         } else if input.right_pressed {
             self.scope_scl.buffer_size += 1;
             println!("buffer size: {}", self.scope_scl.buffer_size);
@@ -256,16 +294,31 @@ impl ProtocolState {
     pub fn draw(&self, ctx: &mut Context, canvas: &mut Canvas) -> GameResult {
         // where to render
         let base_x = 100.0;
-        let base_y = 40.0;
+        let base_y = 60.0;
         // each millisecond is represented by "10.0" units.
         // smallest unit of time.
-        let y_delta = 5.0;
+        let y_delta = -5.0;
         // time_interval_delta_per_millis
         let x_delta = 10.0;
 
         // clock line.
         let points: Vec<[f32; 2]> = self
             .scope_scl
+            .line_values
+            .iter()
+            .enumerate()
+            .map(|(index, y)| [(index as f32 * x_delta), y * y_delta])
+            .collect();
+        if points.len() > 2 {
+            let line = graphics::Mesh::new_line(ctx, &points, 5.0, Color::WHITE)?;
+            canvas.draw(&line, Vec2::new(base_x, base_y));
+        }
+
+        let base_y = 160.0;
+
+        // sda scope
+        let points: Vec<[f32; 2]> = self
+            .scope_sda
             .line_values
             .iter()
             .enumerate()
@@ -331,8 +384,6 @@ mod test {
         assert_eq!(bit_array.get_current_bit(), false);
         bit_array.inc_cursor();
         assert_eq!(bit_array.get_current_bit(), true);
-
-
 
         bit_array.inc_cursor();
         assert_eq!(bit_array.get_current_bit(), true);

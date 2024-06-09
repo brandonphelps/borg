@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 ggez = "0.9.3"
+serialport = "4.3.0"
 uom = {version = "0.36.0",default-features = false,features = ["autoconvert", "serde", "u32"]}

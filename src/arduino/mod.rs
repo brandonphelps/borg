@@ -2,6 +2,9 @@ use std::{collections::HashMap, usize};
 
 pub type Result<T> = core::result::Result<T, Error>;
 
+// run bootloader with the following command
+//home/brandon/snap/arduino-cli/48/.arduino15/packages/arduino/tools/bossac/1.7.0-arduino3/bossac -i -p /dev/pts/6 --debug
+
 mod xmd_serial;
 
 #[derive(Debug)]
@@ -10,11 +13,19 @@ pub enum Error {
     Io(std::io::Error),
 
     FlashOverLap,
+
+    XModem(xmd_serial::Error),
 }
 
 impl From<std::io::Error> for Error {
     fn from(value: std::io::Error) -> Self {
         Self::Io(value)
+    }
+}
+
+impl From<xmd_serial::Error> for Error {
+    fn from(value: xmd_serial::Error) -> Self {
+        Self::XModem(value)
     }
 }
 
@@ -90,6 +101,7 @@ impl Flash {
         println!("Reading {} bytes at {:x}", length, address);
         for (key, block) in self.flash_blocks.iter_mut() {
             if address >= *key && (address + length) < key + block.size {
+                // println!("Reading from block: {:x}", key);
                 return block.read(address, length);
             }
         }
@@ -132,6 +144,9 @@ where
         flash.add_block(0x0, 0x300).unwrap();
         flash.add_block(0xe000ed00, 0x300).unwrap();
         flash.add_block(0x400e0740, 0x300).unwrap();
+        flash.add_block(0x41004020, 0x300).unwrap();
+        flash.add_block(0x41004018, 0x300).unwrap();
+        flash.add_block(0x40000834, 0x300).unwrap();
         // mock out the chip id. 
         flash.write(0x4, &0x10010005_u32.to_le_bytes()).unwrap();
         flash.write(0xe000ed00, &0x10010005_u32.to_le_bytes()).unwrap();
@@ -194,6 +209,8 @@ where
                         println!("Data received: {:x}, {:x?}", self.ptr_data, data);
                         self.flash.write(self.ptr_data, &data)?;
                     }
+                } else if self.command == b'W' {
+                    self.ptr_data = self.current_number;
                 }
                 else if self.command == b'N' {
                     if self.terminal_mode {
@@ -242,7 +259,6 @@ where
         }
         Ok(())
     }
-
 }
 
 

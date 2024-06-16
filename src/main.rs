@@ -205,13 +205,14 @@ fn dump_memory(mut port: Box<dyn SerialPort>, mut start_addr: u32, length: usize
 }
 
 pub fn main() -> GameResult {
+    env_logger::init();
     println!("Ready");
     //let port_name = get_port().expect("Failed to find port");
     let port_name = "/dev/pts/5";
     let mut port = serialport::new(port_name, 9600)
         .open()
         .expect("Failed to open serial port");
-    port.set_timeout(Duration::from_millis(10000))
+    port.set_timeout(Duration::from_millis(40000))
         .expect("Failed to set timeout");
     port.clear(serialport::ClearBuffer::Input)
         .expect("failed to clear buffer");
@@ -222,23 +223,7 @@ pub fn main() -> GameResult {
     loop { 
         bootloader.update_loop().expect("failed bootloader loop");
     }
-    // let mut buffer = [0; 1];
-    // loop {
-    //     match port.read(&mut buffer) {
-    //         Ok(bytes) => {
-    //             if bytes == 1 {
-    //                 println!("Received: {:#02x} {}", buffer[0], buffer[0] as char);
-    //             }
-    //         }
-    //         Err(ref e) if e.kind() == io::ErrorKind::TimedOut => {
-    //             break;
-    //         },
-    //         Err(e) => eprintln!("{:?}", e)
-    //     }
-    // }
-
     return Ok(());
-
     let mut buffer: [u8; 1] = [0; 1];
     println!("Attempting to read out version information");
     port.write(&[b'V', b'#'])

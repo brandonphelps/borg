@@ -54,7 +54,7 @@ impl XmdSerial  {
             println!("Read buffer: {:?}", tmp_buffer[0]);
             match tmp_buffer[0] {
                 SOH => {
-                    match self.getPacket(comm, sno) {
+                    match self.get_packet(comm, sno) {
                         Ok(r) => {
                             data.extend(r);
                         },
@@ -88,13 +88,13 @@ impl XmdSerial  {
     }
 
     /// Reads a package with the given sequence number
-    fn getPacket<P: io::Read + io::Write>(&mut self, com: &mut P, sno: u8) -> Result<Vec<u8>>
+    fn get_packet<P: io::Read + io::Write>(&mut self, com: &mut P, sno: u8) -> Result<Vec<u8>>
     {
         println!("Reading packet with sno: {}", sno);
         // sequence buffer, likely a counter of some sort. 
-        let (seq, _) = self.getbytes(com, 2)?;
+        let (seq, _) = self.get_bytes(com, 2)?;
         println!("Sequence: {:?}", seq);
-        let (buffer, xcrc) = self.getbytes(com, PKTLEN_128)?;
+        let (buffer, xcrc) = self.get_bytes(com, PKTLEN_128)?;
 
         let mut tmp_buffer = [0; 1];
 
@@ -112,15 +112,13 @@ impl XmdSerial  {
     }
 
     // returns the data read and a crc if successfful. 
-    fn getbytes<P: io::Read>(&mut self, com: &mut P, len: u32) -> Result<(Vec<u8>, u16)>{
+    fn get_bytes<P: io::Read>(&mut self, com: &mut P, len: u32) -> Result<(Vec<u8>, u16)>{
         println!("Getting bytes: {}", len);
 
         let mut buffer = Vec::with_capacity(len as usize);
         let mut crc: u16 = 0;
         let mut cpt = 0;
         let mut c = [0; 1];
-        let mut i = 0;
-
         while cpt < len {
             print!("Getting a single byte: ");
             com.read(&mut c)?;
@@ -129,7 +127,6 @@ impl XmdSerial  {
             
             if self.size_of_data != 0 || self.mode_of_transfer != 0 {
                 buffer.push(c[0]);
-                i += 1;
                 if len == PKTLEN_128 {
                     self.size_of_data -= 1;
                 }
@@ -188,6 +185,9 @@ mod tests {
         buffer: VecDeque<u8>,
     }
 
+    unsafe impl Send for MockSerial {}
+    unsafe impl Sync for MockSerial {}
+
     impl MockSerial {
         fn new() -> Self {
             Self {
@@ -239,7 +239,6 @@ mod tests {
         assert_eq!(r, 1);
         assert_eq!(buffer[0], 3);
     }
-
 
     #[test]
     fn test_put_xmd() {

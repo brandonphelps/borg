@@ -1,4 +1,4 @@
-use std::usize;
+use std::{collections::HashMap, usize};
 
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -8,6 +8,8 @@ mod xmd_serial;
 pub enum Error {
     FlashOutOfBounds(u32),
     Io(std::io::Error),
+
+    FlashOverLap,
 }
 
 impl From<std::io::Error> for Error {
@@ -16,23 +18,31 @@ impl From<std::io::Error> for Error {
     }
 }
 
-struct FlashBlock<const N: usize> {
+struct FlashBlock {
     address: u32,
-    data: [u8; N],
+    size: u32,
+    data: Vec<u8>,
 }
 
-impl<const N: usize> FlashBlock<N> {
-    fn new(address: u32) -> Self {
+impl FlashBlock {
+    fn new(address: u32, size: u32) -> Self {
+
+        let mut data = Vec::new();
+        for _ in 0..size {
+            data.push(0xFF);
+        }
+        
         Self {
             // how to make address const like N? 
             address,
-            data: [0; N]
+            size,
+            data,
         }
     }
 
     fn write(&mut self, address: u32, data: &[u8]) -> Result<()> {
         println!("Flash write: {:x} {:x?}", address, data);
-        if address < self.address || address as usize + data.len() > self.address as usize + self.data.len() {
+        if address < self.address || address + data.len() as u32 > self.address + self.size {
             return Err(Error::FlashOutOfBounds(address))
         }
         for (addr, d) in data.iter().enumerate() {
@@ -42,8 +52,8 @@ impl<const N: usize> FlashBlock<N> {
         Ok(())
     }
 
-    fn read(&mut self, address: u32, length: usize) -> Result<Vec<u8>> {
-        if address < self.address || address as usize + length > self.address as usize + length {
+    fn read(&mut self, address: u32, length: u32) -> Result<Vec<u8>> {
+        if address < self.address || address + length > self.address + length {
             return Err(Error::FlashOutOfBounds(address))
         }
         let mut data = Vec::new();
@@ -55,6 +65,47 @@ impl<const N: usize> FlashBlock<N> {
 
         Ok(data)
     }
+
+}
+
+// mock ram/ flash 
+#[derive(Default)]
+pub struct Flash {
+    flash_blocks: HashMap<u32, FlashBlock>,
+}
+
+impl Flash {
+    /// will error if the address and data is invalid for the set of
+    /// flash blocks available. 
+    fn write(&mut self, address: u32, data: &[u8]) -> Result<()> {
+        for (key, block) in self.flash_blocks.iter_mut() {
+            if address >= *key && (address + data.len() as u32) < key + block.size {
+                return block.write(address, data);
+            }
+        }
+        Err(Error::FlashOutOfBounds(address))
+    }
+
+    fn read(&mut self, address: u32, length: u32) -> Result<Vec<u8>> {
+        println!("Reading {} bytes at {:x}", length, address);
+        for (key, block) in self.flash_blocks.iter_mut() {
+            if address >= *key && (address + length) < key + block.size {
+                return block.read(address, length);
+            }
+        }
+        Err(Error::FlashOutOfBounds(address))
+    }
+
+    fn add_block(&mut self, start_address: u32, size: u32) -> Result<()> {
+        for (key, block) in self.flash_blocks.iter_mut() {
+            if start_address >= *key && (start_address + size) < key + block.size {
+                return Err(Error::FlashOverLap)
+            }
+        }
+        self.flash_blocks.insert(start_address, FlashBlock::new(start_address, size));
+        Ok(())
+    }
+
 }
 
 // arduino side bootloader mock implementation.
@@ -65,11 +116,10 @@ pub struct Bootloader<T> {
     command: u8,
     current_number: u32,
     terminal_mode: bool,
-    data: [u8; 200],
     version_str: &'static str,
     attempt: u32,
 
-    flash_block1: FlashBlock<0x300>,
+    flash: Flash,
 }
 
 impl<T> Bootloader<T>
@@ -77,8 +127,16 @@ where
     T: std::io::Read + std::io::Write,
 {
     pub fn new(comm_inter: T) -> Self {
-        let data = [0; 200];
         let version_str = "v2.0 [Arduino:XYZ] Apr 19 2019 14:38:48";
+        let mut flash = Flash::default();
+        flash.add_block(0x0, 0x300).unwrap();
+        flash.add_block(0xe000ed00, 0x300).unwrap();
+        flash.add_block(0x400e0740, 0x300).unwrap();
+        // mock out the chip id. 
+        flash.write(0x4, &0x10010005_u32.to_le_bytes()).unwrap();
+        flash.write(0xe000ed00, &0x10010005_u32.to_le_bytes()).unwrap();
+        flash.write(0x400e0740, &0x10010005_u32.to_le_bytes()).unwrap();
+        flash.add_block(0x20004000, 0x300).unwrap();
 
         Self {
             attempt: 0,
@@ -88,30 +146,21 @@ where
             command: 0,
             current_number: 0,
             terminal_mode: false,
-            // flash/ram emulation.
-            data,
             version_str,
-            flash_block1: FlashBlock::new(0x20004000),
+            flash,
         }
     }
 
     pub fn update_loop(&mut self) -> Result<()> {
         // read from serial chunk.
         let mut data_chunk = [0xff; 64];
-        // this is mocking out the serial id. 
-        let tmp = 0x10010005_u32.to_le_bytes(); //self.attempt.to_be_bytes();
-        self.data[4] = tmp[0];
-        self.data[5] = tmp[1];
-        self.data[6] = tmp[2];
-        self.data[7] = tmp[3];
         println!("Attempt: {:?}", self.attempt);
         let length = self.comm_inter.read(&mut data_chunk)?;
         println!("Data chunk: {:x?}", data_chunk);
         let mut index = 0;
         let mut j: u8 = 0;
-        // data_chunk[..length as usize].iter().enumerate()
         while index < length {
-            println!("{:x}:{}:{}", index, data_chunk[index] as char, index.to_string());
+            println!("Index: {}  Command: {}(0x{:02x}) Ptr data: {:x}", index, self.command as char, self.command, self.ptr_data);
             if data_chunk[index] == 0xff {
                 continue;
             }
@@ -119,7 +168,6 @@ where
                 println!("Process {} current numb {:x} length {} index {}", self.command as char, self.current_number, length, index);
                 if self.command == b'S' {
                     if length > index {
-                        index += 1;
                         index += 1;
 
                         let u32tmp = if (length - index) < self.current_number as usize {
@@ -129,12 +177,7 @@ where
                         };
 
                         println!("index_data: {:x} u32 tmp: {}", self.ptr_data, u32tmp);
-                        if self.ptr_data >= self.flash_block1.address &&
-                            (self.ptr_data as usize + u32tmp as usize) < self.flash_block1.address as usize + self.flash_block1.data.len() 
-                        {
-                            println!("Write to flash block 1: {:x?}", &data_chunk[index..index+u32tmp]);
-                            self.flash_block1.write(self.ptr_data, &data_chunk[index..index+u32tmp])?;
-                        }
+                        self.flash.write(self.ptr_data, &data_chunk[index..index+u32tmp])?;
                         index += u32tmp;
                         j = u32tmp as u8;
                     }
@@ -149,7 +192,7 @@ where
                         let data = s.serial_getdata_xmd(&mut self.comm_inter, self.current_number - j as u32)?;
                         
                         println!("Data received: {:x}, {:x?}", self.ptr_data, data);
-                        self.flash_block1.write(self.ptr_data, &data)?;
+                        self.flash.write(self.ptr_data, &data)?;
                     }
                 }
                 else if self.command == b'N' {
@@ -158,10 +201,9 @@ where
                     }
                     self.terminal_mode = false;
                 } else if self.command == b'w' {
-                    let d= &self.data
-                        [self.current_number as usize..(self.current_number + 4) as usize];
                     self.current_number = self.ptr_data;
-                    self.comm_inter.write_all(d)?;
+                    let d= self.flash.read(self.current_number, 4)?;
+                    self.comm_inter.write_all(&d)?;
                 } else if self.command == b'V' {
                     // note the 'v' is important. 
                     self.comm_inter.write_all(&self.version_str.as_bytes())?;
@@ -171,7 +213,9 @@ where
                 else {
                     if self.command == 0 {
                         
-                    } else {
+                    } else if self.command == 0x80 {
+                    }
+                    else { 
                         todo!()
                     }
                 }
@@ -209,7 +253,7 @@ mod test {
 
     #[test]
     fn flash_read_write_block() {
-        let mut flash_b = FlashBlock::<10>::new(0x100);
+        let mut flash_b = FlashBlock::new(0x100, 10);
         assert!(flash_b.write(0, &[1,2,3]).is_err());
         assert!(flash_b.write(20, &[1,2,3]).is_err());
         assert!(flash_b.write(90, &[1,2,3]).is_err());

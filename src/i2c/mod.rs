@@ -42,7 +42,7 @@ impl Timer {
         if self.triggered {
             self.triggered = false;
         }
-        return b;
+        b
     }
 }
 
@@ -186,10 +186,8 @@ impl Master {
         if self.time_past >= self.clock_rate as u128 {
             self.time_past -= self.clock_rate as u128;
             self.scl.flip();
-            if !self.scl.is_high() {
-                if self.data.inc_cursor() {
-                    self.data.reset_cursor();
-                }
+            if !self.scl.is_high() && self.data.inc_cursor() {
+                self.data.reset_cursor();
             }
         }
         // the note is due to how the drawing of the graph works currently.
@@ -198,10 +196,8 @@ impl Master {
                 if !self.sda.is_high() {
                     self.sda.flip()
                 }
-            } else {
-                if self.sda.is_high() {
-                    self.sda.flip()
-                }
+            } else if self.sda.is_high() {
+                self.sda.flip()
             }
         }
     }

@@ -42,9 +42,9 @@ impl event::EventHandler<ggez::GameError> for MainState {
         self.pos_x = self.pos_x % 800.0 + 1.0;
         self.previous = Instant::now();
 
-        self.factorio.update(self.input.clone());
+        self.factorio.update(self.input);
         self.i2c_protocol
-            .update(Duration::from_millis(1), self.input.clone());
+            .update(Duration::from_millis(1), self.input);
         Ok(())
     }
 
@@ -74,7 +74,7 @@ impl event::EventHandler<ggez::GameError> for MainState {
 
     fn key_down_event(
         &mut self,
-        ctx: &mut Context,
+        _ctx: &mut Context,
         input: ggez::input::keyboard::KeyInput,
         _repeated: bool,
     ) -> Result<(), ggez::GameError> {
@@ -174,7 +174,7 @@ pub fn get_port() -> Option<String> {
         }
         Err(_) => todo!(),
     }
-    return None;
+    None
 }
 
 /// expects port to have a timeout.
@@ -185,9 +185,9 @@ fn dump_memory(mut port: Box<dyn SerialPort>, mut start_addr: u32, length: usize
     while byte_read_count < length {
         let addr = start_addr.to_be_bytes();
         println!("Reading data from: {:x?}", addr);
-        port.write(&addr).expect("Failed to write address");
-        port.write(b",").expect("Failed to write numeric eol");
-        port.write(b"o#")
+        port.write_all(&addr).expect("Failed to write address");
+        port.write_all(b",").expect("Failed to write numeric eol");
+        port.write_all(b"o#")
             .expect("Failed to send command to arduino");
         match port.read(&mut buffer) {
             Ok(bytes) => {
@@ -220,13 +220,14 @@ pub fn main() -> GameResult {
     //port.clear(ClearBuffer::Output).expect("Failed to clear output buffer");
 
     let mut bootloader = arduino::Bootloader::new(port);
-    loop { 
+    loop {
         bootloader.update_loop().expect("failed bootloader loop");
     }
+
     return Ok(());
     let mut buffer: [u8; 1] = [0; 1];
     println!("Attempting to read out version information");
-    port.write(&[b'V', b'#'])
+    port.write_all(&[b'V', b'#'])
         .expect("failed to write some bytes");
     let mut reading_version = false;
     loop {

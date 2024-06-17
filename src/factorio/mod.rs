@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::f32::consts::PI;
 
 // todo: move this to some generic layer that allows
@@ -32,13 +34,13 @@ impl Direction {
     fn angle(&self) -> (f32, f32) {
         let angle = match self {
             Direction::North => (0.0, 1.0),
-            Direction::NorthEast => ((PI / 4.0).cos() as f32, (PI / 4.0).sin() as f32),
+            Direction::NorthEast => ((PI / 4.0).cos(), (PI / 4.0).sin()),
             Direction::East => (1.0, 0.0),
-            Direction::SouthEast => ((7.0 * PI / 4.0).cos() as f32, (7.0 * PI / 4.0).sin() as f32),
+            Direction::SouthEast => ((7.0 * PI / 4.0).cos(), (7.0 * PI / 4.0).sin()),
             Direction::South => (0.0, -1.0),
-            Direction::SouthWest => ((5.0 * PI / 4.0).cos() as f32, (5.0 * PI / 4.0).sin() as f32),
+            Direction::SouthWest => ((5.0 * PI / 4.0).cos(), (5.0 * PI / 4.0).sin()),
             Direction::West => (-1.0, 0.0),
-            Direction::NorthWest => ((3.0 * PI / 4.0).cos() as f32, (3.0 * PI / 4.0).sin() as f32),
+            Direction::NorthWest => ((3.0 * PI / 4.0).cos(), (3.0 * PI / 4.0).sin()),
         };
         // this is due to the coords for drawing is flipped
         // maybe, the coords flippage for drawing should be

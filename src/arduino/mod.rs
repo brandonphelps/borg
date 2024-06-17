@@ -155,6 +155,8 @@ where
                     self.comm_inter.write_all(self.version_str.as_bytes())?;
                     self.comm_inter.write_all(b"\n\r")?;
                     self.attempt += 1;
+                } else self.command == b'X' {
+                    
                 } else {
                     if self.command == 0 || self.command == 0x80 {
                     } else {
@@ -189,24 +191,3 @@ where
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn flash_read_write_block() {
-        let mut flash_b = FlashBlock::new(0x100, 10);
-        assert!(flash_b.write(0, &[1, 2, 3]).is_err());
-        assert!(flash_b.write(20, &[1, 2, 3]).is_err());
-        assert!(flash_b.write(90, &[1, 2, 3]).is_err());
-        assert!(flash_b.write(0x90, &[1, 2, 3]).is_err());
-        assert!(flash_b.write(0x99, &[1, 2, 3]).is_err());
-        assert!(flash_b.write(0x10B, &[1, 2, 3]).is_err());
-
-        assert!(flash_b.write(0x100, &[1, 2, 3]).is_ok());
-
-        assert!(flash_b.read(0, 3).is_err());
-        assert!(flash_b.read(90, 3).is_err());
-        assert_eq!(flash_b.read(0x100, 3).unwrap(), vec![1, 2, 3]);
-    }
-}

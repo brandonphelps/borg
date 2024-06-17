@@ -1,9 +1,17 @@
+/// Arduino related components
+/// Currently investigating how the arduino bootloader
+/// and flashing tools work.
+
+/// Currently main is setup to act a arduino bootloader samd21
+/// device and with the following command it will respond as such. 
+/// `home/brandon/snap/arduino-cli/48/.arduino15/packages/arduino/tools/bossac/1.7.0-arduino3/bossac -i -p /dev/pts/6 --debug`
+/// the end goal currently is to implement my own flashing utility for
+/// flash the arduino samd21 bootloader and then build a second stage bootloader
+/// to write down the knowledge I have over elf file formats. 
+
 use std::{collections::HashMap, usize};
 
 pub type Result<T> = core::result::Result<T, Error>;
-
-// run bootloader with the following command
-//home/brandon/snap/arduino-cli/48/.arduino15/packages/arduino/tools/bossac/1.7.0-arduino3/bossac -i -p /dev/pts/6 --debug
 
 mod xmd_serial;
 

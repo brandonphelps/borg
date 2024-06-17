@@ -16,14 +16,24 @@ pub type Result<T> = core::result::Result<T, Error>;
 mod flash;
 mod xmd_serial;
 
-#[derive(Debug)]
+#[derive(thiserror::Error)]
 pub enum Error {
-    FlashOutOfBounds(u32),
+    #[error("Flash out of bounds: {0:x}: {1:x}")]
+    FlashOutOfBounds(u32, u32),
+    #[error("Io error: {0}")]
     Io(std::io::Error),
 
+    #[error("Flash overlap")]
     FlashOverLap,
 
+    #[error("Xmodem communication error: {0}")]
     XModem(xmd_serial::Error),
+}
+
+impl std::fmt::Debug for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
 }
 
 impl From<std::io::Error> for Error {
@@ -58,6 +68,8 @@ where
     pub fn new(comm_inter: T) -> Self {
         let version_str = "v2.0 [Arduino:XYZ] Apr 19 2019 14:38:48";
         let mut flash = flash::Flash::default();
+        // reverse pulled addresses
+        // todo: look at the samd21g memory space for legit ranges. 
         flash.add_block(0x0, 0x300).unwrap();
         flash.add_block(0xe000ed00, 0x300).unwrap();
         flash.add_block(0x400e0740, 0x300).unwrap();
@@ -72,7 +84,7 @@ where
         flash
             .write(0x400e0740, &0x10010005_u32.to_le_bytes())
             .unwrap();
-        flash.add_block(0x20004000, 0x300).unwrap();
+        flash.add_block(0x20004000, 0x2000).unwrap();
 
         Self {
             attempt: 0,
@@ -155,7 +167,12 @@ where
                     self.comm_inter.write_all(self.version_str.as_bytes())?;
                     self.comm_inter.write_all(b"\n\r")?;
                     self.attempt += 1;
-                } else self.command == b'X' {
+                } else if self.command == b'X' {
+                    self.erase_flash(self.current_number);
+                    // oddly enough the bossa continue even if
+                    // we don't send a response.
+                    self.comm_inter.write_all(b"X\n\r")?;
+                } else if self.command == b'Y' {
                     
                 } else {
                     if self.command == 0 || self.command == 0x80 {
@@ -188,6 +205,11 @@ where
             index += 1;
         }
         Ok(())
+    }
+
+    fn erase_flash(&mut self, dst_addr: u32) {
+        println!("Erase flash: {:x}", dst_addr);
+        // todo
     }
 }
 

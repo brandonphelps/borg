@@ -54,6 +54,7 @@ pub struct Bootloader<T> {
     ptr_data: u32,
     command: u8,
     current_number: u32,
+    src_buff_addr: u32,
     terminal_mode: bool,
     version_str: &'static str,
     attempt: u32,
@@ -71,10 +72,11 @@ where
         // reverse pulled addresses
         // todo: look at the samd21g memory space for legit ranges. 
         flash.add_block(0x0, 0x300).unwrap();
+        flash.add_block(0x2000, 0x20000).unwrap();
         flash.add_block(0xe000ed00, 0x300).unwrap();
         flash.add_block(0x400e0740, 0x300).unwrap();
         flash.add_block(0x41004020, 0x300).unwrap();
-        flash.add_block(0x41004018, 0x300).unwrap();
+        // flash.add_block(0x41004018, 0x300).unwrap();
         flash.add_block(0x40000834, 0x300).unwrap();
         // mock out the chip id.
         flash.write(0x4, &0x10010005_u32.to_le_bytes()).unwrap();
@@ -85,12 +87,14 @@ where
             .write(0x400e0740, &0x10010005_u32.to_le_bytes())
             .unwrap();
         flash.add_block(0x20004000, 0x2000).unwrap();
+        // flash.add_block(0x20005000, 0x2000).unwrap();
 
         Self {
             attempt: 0,
             comm_inter,
             ptr_data: 0,
             command: 0,
+            src_buff_addr: 0,
             current_number: 0,
             terminal_mode: false,
             version_str,
@@ -102,8 +106,16 @@ where
         // read from serial chunk.
         let mut data_chunk = [0xff; 64];
         println!("Attempt: {:?}", self.attempt);
-        let length = self.comm_inter.read(&mut data_chunk)?;
-        println!("Data chunk: {:x?}", data_chunk);
+        let length = match self.comm_inter.read(&mut data_chunk) {
+            Ok(r) => { r },
+            Err(f) => {
+                // todo: filter by timeout error. 
+                return Ok(());
+            }
+        };
+        // .inspect_err(|f| println!("comm iter read error: {f}"))?;
+        let k: Vec<char> = data_chunk.iter().map(|f| *f as char).collect();
+        println!("Data chunk: {:x?}", k);
         let mut index = 0;
         let mut j: u8 = 0;
         while index < length {
@@ -173,7 +185,24 @@ where
                     // we don't send a response.
                     self.comm_inter.write_all(b"X\n\r")?;
                 } else if self.command == b'Y' {
-                    
+                    if self.current_number == 0 {
+                        println!("Setting src buffer addr: {:x}", self.ptr_data);
+                        self.src_buff_addr = self.ptr_data;
+                    } else {
+                        // todo: why divide by page size? 
+                        let size = self.current_number / 4;
+                        let data = self.flash.read(self.src_buff_addr, size)
+                            .inspect_err(|f| println!("flash read error: {f}"))?;
+                        let dst_addr = self.ptr_data;
+                        println!("Updating flash with sram {:x}({}) to {:x}", self.src_buff_addr, size, dst_addr);
+                        self.flash.write(dst_addr, &data)
+                            .inspect_err(|f| println!("flash write error: {f}"))
+                            ?;
+                    }
+                    println!("Send response to w/e");
+                    self.comm_inter.write_all(b"Y\n\r")
+                        .inspect_err(|f| println!("got error: {f}"))?;
+                    println!("finished sending response");
                 } else {
                     if self.command == 0 || self.command == 0x80 {
                     } else {
@@ -213,3 +242,56 @@ where
     }
 }
 
+
+
+
+#[cfg(test)]
+mod test {
+    // tests use dummy ttys
+
+    use std::time::Duration;
+
+    use super::Bootloader;
+
+    #[test]
+    fn write_buffer() {
+        let port_name = "/dev/pts/5";
+        let mut port = serialport::new(port_name, 9600)
+            .open()
+            .expect("Failed to open serial port");
+        port.set_timeout(Duration::from_millis(40000))
+            .expect("Failed to set timeout");
+        port.clear(serialport::ClearBuffer::Input)
+            .expect("failed to clear buffer");
+
+        let mut r_port = serialport::new("/dev/pts/6", 9600)
+            .open()
+            .expect("Failed to open serial port");
+        port.set_timeout(Duration::from_millis(40000))
+            .expect("Failed to set timeout");
+        port.clear(serialport::ClearBuffer::Input)
+            .expect("failed to clear buffer");
+
+        let j = std::thread::spawn(|| {
+            let mut bootloader = Bootloader::new(r_port);
+            loop {
+                bootloader.update_loop().expect("failed bootloader loop");
+            }
+        });
+        
+        port.write_all(b"Y20005000,0#").unwrap();
+        let mut buf = [0; 3];
+        println!("Waiting for data from module");
+        port.read_exact(&mut buf).unwrap();
+        assert_eq!(buf[0], b'Y');
+        println!("Transfer data to address 2000 of size 20");
+        port.write_all(b"Y2000,20#").unwrap();
+        let mut buf = [0; 3];
+        port.read_exact(&mut buf).unwrap();
+        assert_eq!(buf[0], b'Y');
+
+        j.join();
+        assert!(false);
+    }
+    
+}

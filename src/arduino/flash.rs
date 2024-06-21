@@ -32,7 +32,9 @@ impl FlashBlock {
     }
 
     pub fn read(&mut self, address: u32, length: u32) -> Result<Vec<u8>> {
-        if address < self.address || address + length > self.address + length {
+        
+        if address < self.address || address + length > self.address + self.size {
+            println!("Out of bounds: {:x} {}", address, length);
             return Err(Error::FlashOutOfBounds(address, length));
         }
         let mut data = Vec::new();
@@ -46,7 +48,7 @@ impl FlashBlock {
     }
 
     pub fn erase(&mut self, address: u32, length: u32) -> Result<()> {
-        if address < self.address || address + length > self.address + length {
+        if address < self.address || address + length > self.address + self.size {
             return Err(Error::FlashOutOfBounds(address, length));
         }
 
@@ -82,6 +84,7 @@ impl Flash {
     pub fn read(&mut self, address: u32, length: u32) -> Result<Vec<u8>> {
         println!("Reading {} bytes at {:x}", length, address);
         for (key, block) in self.flash_blocks.iter_mut() {
+            println!("Checking the following blocks: {key:x} {}", block.size);
             if address >= *key && (address + length) <= key + block.size {
                 // println!("Reading from block: {:x}", key);
                 return block.read(address, length);
@@ -101,12 +104,18 @@ impl Flash {
     }
 
     pub fn add_block(&mut self, start_address: u32, size: u32) -> Result<()> {
-        for (key, block) in self.flash_blocks.iter_mut() {
-            if start_address >= *key && (start_address + size) <= key + block.size {
+        for (block_start_address, block) in self.flash_blocks.iter_mut() {
+            println!("Checking {block_start_address} on {0}", block.size);
+            println!("{} >= {} && {} <= {}", start_address, *block_start_address, start_address, *block_start_address + block.size);
+            if start_address >= *block_start_address && start_address < *block_start_address + block.size {
+                return Err(Error::FlashOverLap);
+            }
+            println!("{} >= {} && {} <= {}", start_address + size, *block_start_address, start_address + size, *block_start_address + block.size);
+            if start_address + size >= *block_start_address && start_address + size < *block_start_address + block.size {
                 return Err(Error::FlashOverLap);
             }
         }
-        // todo: add in a smooth of flash blocks if they are contigious.
+        // todo: add in a smoosh of flash blocks if they are contigious.
         self.flash_blocks
             .insert(start_address, FlashBlock::new(start_address, size));
         Ok(())
@@ -132,5 +141,16 @@ mod test {
         assert!(flash_b.read(0, 3).is_err());
         assert!(flash_b.read(90, 3).is_err());
         assert_eq!(flash_b.read(0x100, 3).unwrap(), vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn add_block_overlap() {
+        let mut flash_b = Flash::default();
+        flash_b.add_block(30, 100).unwrap();
+        assert!(flash_b.add_block(40, 100).is_err());
+        assert!(flash_b.add_block(131, 100).is_ok());
+        assert!(flash_b.add_block(20, 100).is_err());
+        assert!(flash_b.add_block(20, 9).is_ok());
+        assert!(flash_b.add_block(20, 10).is_err());
     }
 }

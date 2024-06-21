@@ -42,7 +42,6 @@ impl XmdSerial {
         comm: &mut P,
         length: u32,
     ) -> Result<Vec<u8>> {
-        println!("Serial get data xmd: length: {}", length);
         // todo: supposed to continously send 'C'
         // untill remote responds with first byte.
         let mut data = vec![];
@@ -67,9 +66,7 @@ impl XmdSerial {
         let mut b_run = true;
         while b_run {
             // assumes timeout is set.
-            println!("Data transfered: {}", data_transfered);
             comm.read_exact(&mut tmp_buffer)?;
-            println!("Read buffer: {:x}", tmp_buffer[0]);
             match tmp_buffer[0] {
                 SOH => {
                     match self.get_packet(comm, sno) {
@@ -81,13 +78,11 @@ impl XmdSerial {
                         }
                     };
                     if b_run {
-                        println!("\t increment sequence number");
                         sno += 1;
                         data_transfered += PKTLEN_128;
                     }
                 }
                 EOT => {
-                    println!("Sending ACK");
                     comm.write_all(&[ACK])?;
                     b_run = false;
                 }
@@ -102,10 +97,8 @@ impl XmdSerial {
 
     /// Reads a package with the given sequence number
     fn get_packet<P: io::Read + io::Write>(&mut self, com: &mut P, sno: u8) -> Result<Vec<u8>> {
-        println!("Reading packet with sno: {}", sno);
         // sequence buffer, likely a counter of some sort.
         let (seq, _) = self.get_bytes(com, 2)?;
-        println!("Seq {:x} + {:x} = {:x}", seq[0], seq[1], seq[0] + seq[1]);
         if seq[0] + seq[1] != 0xFF {
             return Err(Error::InvalidPacketSeq([seq[0], seq[1]]));
         }
@@ -117,17 +110,10 @@ impl XmdSerial {
         com.read_exact(&mut tmp_buffer)?;
         let mut crc = (tmp_buffer[0] as u16) << 8;
         crc += tmp_buffer[1] as u16;
-
-        println!(
-            "Crc: {:x} XCrc: {:x}, Seq: {:?}, snow: {}",
-            crc, xcrc, seq, sno
-        );
         if (crc != xcrc) || seq[0] != sno || seq[1] != !sno {
-            println!("Sending CAN in get packet");
             // if this happen there is room for a bug to occur.
             com.write_all(&[CAN])?;
         } else {
-            println!("Sending ack in get packet");
             com.write_all(&[ACK])?;
         }
         Ok(buffer)
@@ -135,15 +121,12 @@ impl XmdSerial {
 
     // returns the data read and a crc if successfful.
     fn get_bytes<P: io::Read>(&mut self, com: &mut P, len: u32) -> Result<(Vec<u8>, u16)> {
-        println!("Getting bytes: {}", len);
         let mut buffer = Vec::with_capacity(len as usize);
         let mut crc: u16 = 0;
         let mut cpt = 0;
         let mut c = [0; 1];
         while cpt < len {
-            print!("Getting a single byte: ");
             com.read_exact(&mut c)?;
-            println!("{}", c[0]);
             crc = serial_add_crc(c[0] as u16, crc);
 
             if self.size_of_data != 0 || self.mode_of_transfer != 0 {

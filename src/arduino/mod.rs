@@ -14,6 +14,7 @@
 pub type Result<T> = core::result::Result<T, Error>;
 
 mod flash;
+mod flash_utility;
 mod xmd_serial;
 
 #[derive(thiserror::Error)]
@@ -70,13 +71,12 @@ where
         let version_str = "v2.0 [Arduino:XYZ] Apr 19 2019 14:38:48";
         let mut flash = flash::Flash::default();
         // reverse pulled addresses
-        // todo: look at the samd21g memory space for legit ranges. 
+        // todo: look at the samd21g memory space for legit ranges.
         flash.add_block(0x0, 0x300).unwrap();
         flash.add_block(0x2000, 0x20000).unwrap();
         flash.add_block(0xe000ed00, 0x300).unwrap();
         flash.add_block(0x400e0740, 0x300).unwrap();
         flash.add_block(0x41004020, 0x300).unwrap();
-        // flash.add_block(0x41004018, 0x300).unwrap();
         flash.add_block(0x40000834, 0x300).unwrap();
         // mock out the chip id.
         flash.write(0x4, &0x10010005_u32.to_le_bytes()).unwrap();
@@ -87,8 +87,6 @@ where
             .write(0x400e0740, &0x10010005_u32.to_le_bytes())
             .unwrap();
         flash.add_block(0x20004000, 0x2000).unwrap();
-        // flash.add_block(0x20005000, 0x2000).unwrap();
-
         Self {
             attempt: 0,
             comm_inter,
@@ -107,9 +105,9 @@ where
         let mut data_chunk = [0xff; 64];
         println!("Attempt: {:?}", self.attempt);
         let length = match self.comm_inter.read(&mut data_chunk) {
-            Ok(r) => { r },
+            Ok(r) => r,
             Err(f) => {
-                // todo: filter by timeout error. 
+                // todo: filter by timeout error.
                 return Ok(());
             }
         };
@@ -141,7 +139,6 @@ where
                             self.current_number as usize
                         };
 
-                        println!("index_data: {:x} u32 tmp: {}", self.ptr_data, u32tmp);
                         self.flash
                             .write(self.ptr_data, &data_chunk[index..index + u32tmp])?;
                         index += u32tmp;
@@ -149,18 +146,12 @@ where
                     }
                     index -= 1;
 
-                    println!("J: {}, CN: {}", j, self.current_number);
                     if (j as u32) < self.current_number {
-                        println!("Reading data: {}", self.current_number - j as u32);
-
                         let mut s = xmd_serial::XmdSerial::new();
-                        println!("Getting xmd data");
                         let data = s.serial_getdata_xmd(
                             &mut self.comm_inter,
                             self.current_number - j as u32,
                         )?;
-
-                        println!("Data received: {:x}, {:x?}", self.ptr_data, data);
                         self.flash.write(self.ptr_data, &data)?;
                     }
                 } else if self.command == b'W' {
@@ -189,18 +180,24 @@ where
                         println!("Setting src buffer addr: {:x}", self.ptr_data);
                         self.src_buff_addr = self.ptr_data;
                     } else {
-                        // todo: why divide by page size? 
+                        // todo: why divide by page size?
                         let size = self.current_number / 4;
-                        let data = self.flash.read(self.src_buff_addr, size)
+                        let data = self
+                            .flash
+                            .read(self.src_buff_addr, size)
                             .inspect_err(|f| println!("flash read error: {f}"))?;
                         let dst_addr = self.ptr_data;
-                        println!("Updating flash with sram {:x}({}) to {:x}", self.src_buff_addr, size, dst_addr);
-                        self.flash.write(dst_addr, &data)
-                            .inspect_err(|f| println!("flash write error: {f}"))
-                            ?;
+                        println!(
+                            "Updating flash with sram {:x}({}) to {:x}",
+                            self.src_buff_addr, size, dst_addr
+                        );
+                        self.flash
+                            .write(dst_addr, &data)
+                            .inspect_err(|f| println!("flash write error: {f}"))?;
                     }
                     println!("Send response to w/e");
-                    self.comm_inter.write_all(b"Y\n\r")
+                    self.comm_inter
+                        .write_all(b"Y\n\r")
                         .inspect_err(|f| println!("got error: {f}"))?;
                     println!("finished sending response");
                 } else {
@@ -242,9 +239,6 @@ where
     }
 }
 
-
-
-
 #[cfg(test)]
 mod test {
     // tests use dummy ttys
@@ -278,7 +272,7 @@ mod test {
                 bootloader.update_loop().expect("failed bootloader loop");
             }
         });
-        
+
         port.write_all(b"Y20005000,0#").unwrap();
         let mut buf = [0; 3];
         println!("Waiting for data from module");
@@ -293,5 +287,4 @@ mod test {
         j.join();
         assert!(false);
     }
-    
 }

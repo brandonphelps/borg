@@ -15,7 +15,7 @@ impl FlashBlock {
             // how to make address const like N?
             address,
             size,
-            data: vec![0xFF;size as usize],
+            data: vec![0xFF; size as usize],
         }
     }
 
@@ -32,7 +32,6 @@ impl FlashBlock {
     }
 
     pub fn read(&mut self, address: u32, length: u32) -> Result<Vec<u8>> {
-        
         if address < self.address || address + length > self.address + self.size {
             println!("Out of bounds: {:x} {}", address, length);
             return Err(Error::FlashOutOfBounds(address, length));
@@ -56,7 +55,7 @@ impl FlashBlock {
             let w_addr = address - self.address + addr as u32;
             self.data[w_addr as usize] = 0xFF;
         }
-        
+
         Ok(())
     }
 }
@@ -106,12 +105,28 @@ impl Flash {
     pub fn add_block(&mut self, start_address: u32, size: u32) -> Result<()> {
         for (block_start_address, block) in self.flash_blocks.iter_mut() {
             println!("Checking {block_start_address} on {0}", block.size);
-            println!("{} >= {} && {} <= {}", start_address, *block_start_address, start_address, *block_start_address + block.size);
-            if start_address >= *block_start_address && start_address < *block_start_address + block.size {
+            println!(
+                "{} >= {} && {} <= {}",
+                start_address,
+                *block_start_address,
+                start_address,
+                *block_start_address + block.size
+            );
+            if start_address >= *block_start_address
+                && start_address < *block_start_address + block.size
+            {
                 return Err(Error::FlashOverLap);
             }
-            println!("{} >= {} && {} <= {}", start_address + size, *block_start_address, start_address + size, *block_start_address + block.size);
-            if start_address + size >= *block_start_address && start_address + size < *block_start_address + block.size {
+            println!(
+                "{} >= {} && {} <= {}",
+                start_address + size,
+                *block_start_address,
+                start_address + size,
+                *block_start_address + block.size
+            );
+            if start_address + size >= *block_start_address
+                && start_address + size < *block_start_address + block.size
+            {
                 return Err(Error::FlashOverLap);
             }
         }

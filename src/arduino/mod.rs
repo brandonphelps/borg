@@ -116,12 +116,14 @@ where
         println!("Data chunk: {:x?}", k);
         let mut index = 0;
         let mut j: u8 = 0;
+        println!("Length: {}", length);
         while index < length {
             println!(
                 "Index: {}  Command: {}(0x{:02x}) Ptr data: {:x}",
                 index, self.command as char, self.command, self.ptr_data
             );
             if data_chunk[index] == 0xff {
+                index += 1;
                 continue;
             }
             if data_chunk[index] == b'#' {

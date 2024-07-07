@@ -1,6 +1,6 @@
 use std::{
     collections::VecDeque,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex}, time::{Duration, Instant},
 };
 
 pub struct BiChannel {
@@ -14,6 +14,9 @@ pub struct BiChannel {
     // out going is data being sent
     // else it is incoming.
     outgoing: Arc<Mutex<VecDeque<u8>>>,
+
+    // timeout for both reading and writing operations. 
+    timeout: Duration,
 }
 
 impl BiChannel {
@@ -22,7 +25,12 @@ impl BiChannel {
             id: 0,
             incoming: Arc::new(Mutex::new(VecDeque::new())),
             outgoing: Arc::new(Mutex::new(VecDeque::new())),
+            timeout: Duration::from_secs(0),
         }
+    }
+
+    pub fn set_timeout(&mut self, timeout: Duration) {
+        self.timeout = timeout;
     }
 }
 
@@ -35,36 +43,43 @@ impl Clone for BiChannel {
             id: self.id + 1,
             incoming: self.incoming.clone(),
             outgoing: self.outgoing.clone(),
+            timeout: self.timeout,
         }
     }
 }
 
 impl std::io::Read for BiChannel {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        let mut read_source = if self.id == 0 {
-            self.incoming.lock().unwrap()
-        } else {
-            self.outgoing.lock().unwrap()
-        };
+        let start_timeout = Instant::now();
+        loop { 
+            let mut read_source = if self.id == 0 {
+                self.incoming.lock().unwrap()
+            } else {
+                self.outgoing.lock().unwrap()
+            };
 
-        let read_count = if read_source.len() > buf.len() {
-            buf.len() 
-        } else {
-            read_source.len()
-        };
-        println!("Read count: {}", read_count);
-        if read_count == 0 {
-            return Ok(0)
+            let read_count = if read_source.len() > buf.len() {
+                buf.len() 
+            } else {
+                read_source.len()
+            };
+            println!("Read count: {}", read_count);
+            if read_count == 0 {
+                if start_timeout.elapsed() < self.timeout { 
+                    continue;
+                } else {
+                    return Ok(0);
+                }
+            }
+            
+            for i in 0..read_count {
+                buf[i] = read_source.pop_front().ok_or(std::io::Error::new(
+                    std::io::ErrorKind::UnexpectedEof,
+                    "out of bytes to read",
+                ))?;
+            }
+            return Ok(buf.len());
         }
-       
-        for i in 0..read_count {
-            buf[i] = read_source.pop_front().ok_or(std::io::Error::new(
-                std::io::ErrorKind::UnexpectedEof,
-                "out of bytes to read",
-            ))?;
-        }
-
-        Ok(buf.len())
     }
 }
 

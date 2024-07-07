@@ -48,7 +48,6 @@ where
         self.comm.write_all(format!("{:x},", address).as_bytes())?;
         self.comm.write_all(b"w#")?;
         let mut bytes = [0; 4];
-        std::thread::sleep(Duration::from_secs(2));
         self.comm.read_exact(&mut bytes)?;
         Ok(bytes.to_vec())
     }
@@ -68,7 +67,9 @@ mod tests {
     #[test]
     fn test_read() {
         let channel = BiChannel::new();
-        let channel_clone = channel.clone();
+        let mut channel_clone = channel.clone();
+        channel_clone.set_timeout(Duration::from_secs(2));
+        
         let mut bootloader = Bootloader::new(channel);
         
 

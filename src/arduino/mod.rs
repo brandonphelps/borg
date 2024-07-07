@@ -87,6 +87,10 @@ where
             .write(0x400e0740, &0x10010005_u32.to_le_bytes())
             .unwrap();
         flash.add_block(0x20004000, 0x2000).unwrap();
+
+        flash.write(0, &[1,2,3,4]);
+            
+
         Self {
             attempt: 0,
             comm_inter,
@@ -260,7 +264,7 @@ mod test {
         port.clear(serialport::ClearBuffer::Input)
             .expect("failed to clear buffer");
 
-        let mut r_port = serialport::new("/dev/pts/6", 9600)
+        let r_port = serialport::new("/dev/pts/6", 9600)
             .open()
             .expect("Failed to open serial port");
         port.set_timeout(Duration::from_millis(40000))

@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 mod utils;
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -46,7 +48,8 @@ where
         self.comm.write_all(format!("{:x},", address).as_bytes())?;
         self.comm.write_all(b"w#")?;
         let mut bytes = [0; 4];
-        // self.comm.read_exact(&mut bytes)?;
+        std::thread::sleep(Duration::from_secs(2));
+        self.comm.read_exact(&mut bytes)?;
         Ok(bytes.to_vec())
     }
 }
@@ -55,7 +58,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Read, Write};
 
     use crate::arduino::Bootloader;
 
@@ -66,18 +68,25 @@ mod tests {
     #[test]
     fn test_read() {
         let channel = BiChannel::new();
-        let mut arduio_com = ArduinoBootComm::new(channel.clone());
+        let channel_clone = channel.clone();
         let mut bootloader = Bootloader::new(channel);
-        //channel.write_all(&[1, 2, 3, 4, 5]).unwrap();
         
-        let res = arduio_com.read_memory(0, 4).unwrap();
-        bootloader.update_loop().unwrap();
-        // assert_eq!(res.len(), 4);
 
-
-        // let expected_write = b"0,w#";
-        // let mut read_bytes = vec![];
-        // channel.read_to_end(&mut read_bytes).unwrap();
-        // assert_eq!(&read_bytes[..4], expected_write);
+        let k = std::thread::spawn(|| { 
+            let mut arduio_com = ArduinoBootComm::new(channel_clone);
+            println!("before read");
+            let res = arduio_com.read_memory(0, 4).unwrap();
+            println!("faile");
+            assert_eq!(res.len(), 4);
+            assert_eq!(&res, &[1,2,3,4]);
+            println!("res: {:x?}", res);
+        });
+        let j = std::thread::spawn(move || {
+            for _ in 0..100 {
+                bootloader.update_loop().unwrap();
+            }
+        });
+        k.join().unwrap();
+        j.join().unwrap();
     }
 }

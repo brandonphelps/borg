@@ -50,6 +50,12 @@ impl Clone for BiChannel {
 
 impl std::io::Read for BiChannel {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        // noteably this implimentation, sort of just checks
+        // if any bytes are available on timeout
+        // not really sure what read_exact does if this produces
+        // a timeout without reading all requested bytes
+        // do we get multiple timeouts? seems strange from
+        // the read_exact perspective. 
         let start_timeout = Instant::now();
         loop { 
             let mut read_source = if self.id == 0 {
@@ -63,9 +69,11 @@ impl std::io::Read for BiChannel {
             } else {
                 read_source.len()
             };
-            println!("Read count: {}", read_count);
+            println!("Read count: {}, timeout: {}", read_count, self.timeout.as_secs());
             if read_count == 0 {
-                if start_timeout.elapsed() < self.timeout { 
+                if start_timeout.elapsed() < self.timeout {
+                    // give a bit of time to allow the writer to gain the lock. 
+                    std::thread::sleep(Duration::from_millis(1));
                     continue;
                 } else {
                     return Ok(0);

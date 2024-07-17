@@ -162,6 +162,9 @@ where
                     }
                 } else if self.command == b'W' {
                     self.ptr_data = self.current_number;
+                } else if self.command == b'o' {
+                    let data = self.flash.read(self.ptr_data, 1)?;
+                    self.comm_inter.write_all(&data);
                 } else if self.command == b'N' {
                     if self.terminal_mode {
                         self.comm_inter.write_all(b"\n\r")?;

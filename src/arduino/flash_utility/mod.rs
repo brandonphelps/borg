@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 mod utils;
 
 pub type Result<T> = core::result::Result<T, Error>;
@@ -43,10 +41,17 @@ where
         Self { comm }
     }
 
+    /// Read a single byte at teh given address. 
+    pub fn read_byte(&mut self, address: u32) -> Result<u8> {
+        self.comm.write_all(format!("o{:x},4#", address).as_bytes())?;
+        let mut bytes = [0; 1];
+        self.comm.read_exact(&mut bytes)?;
+        Ok(bytes[0])
+    }
+
     /// read address of memory and place it into vector.
     pub fn read_memory(&mut self, address: u32, size: u32) -> Result<Vec<u8>> {
-        self.comm.write_all(format!("{:x},", address).as_bytes())?;
-        self.comm.write_all(b"w#")?;
+        self.comm.write_all(format!("{:x},w#", address).as_bytes())?;
         let mut bytes = [0; 4];
         self.comm.read_exact(&mut bytes)?;
         Ok(bytes.to_vec())
@@ -58,10 +63,10 @@ where
 #[cfg(test)]
 mod tests {
 
+    use std::time::Duration;
     use crate::arduino::Bootloader;
 
     use super::*;
-
     use super::utils::BiChannel;
 
     #[test]
@@ -80,6 +85,32 @@ mod tests {
             println!("faile");
             assert_eq!(res.len(), 4);
             assert_eq!(&res, &[1,2,3,4]);
+            println!("res: {:x?}", res);
+        });
+        let j = std::thread::spawn(move || {
+            for _ in 0..100 {
+                bootloader.update_loop().unwrap();
+            }
+        });
+        k.join().unwrap();
+        j.join().unwrap();
+    }
+
+    #[test]
+    fn test_read_byte() {
+        let channel = BiChannel::new();
+        let mut channel_clone = channel.clone();
+        channel_clone.set_timeout(Duration::from_secs(2));
+        
+        let mut bootloader = Bootloader::new(channel);
+        
+
+        let k = std::thread::spawn(|| { 
+            let mut arduio_com = ArduinoBootComm::new(channel_clone);
+            println!("before read");
+            let res = arduio_com.read_byte(0).unwrap();
+            println!("faile");
+            assert_eq!(&res, &1);
             println!("res: {:x?}", res);
         });
         let j = std::thread::spawn(move || {
